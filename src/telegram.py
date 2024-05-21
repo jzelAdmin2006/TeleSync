@@ -90,20 +90,20 @@ class Telegram:
     def download_file(self, file_query: str):
         # Download a file
         print(colored(f'[*] Searching for "{file_query}"...', "blue"))
-        file = self.db.find_file_by_name_or_path_or_id(file_query)
+        file_record = self.db.find_file_by_name_or_path_or_id(file_query)
 
-        if file[0][-2] == "dir":
-            self.download_directory(file_query)
-            return
-
-        if not file:
+        if not file_record:
             print(colored(f"[-] File {file_query} not found.", "red"))
             return
 
-        file = file[0]
-        chunks = json.loads(file[4])
-        file_name = file[1]
-        file_path = file[2]
+        if file_record[0][-2] == "dir":
+            self.download_directory(file_query)
+            return
+
+        file_record = file_record[0]
+        chunks = json.loads(file_record[4])
+        file_name = file_record[1]
+        file_path = file_record[2]
 
         print(colored(f"\n[+] Downloading {len(chunks)} chunk(s).", "magenta"))
 
@@ -113,13 +113,13 @@ class Telegram:
             for chunk_num, chunk_path in enumerate(chunks):
                 # Build the caption, to search for the message
                 # that contains the chunk we need.
-                caption = f"{file[0]}:::::{file[2]}:::::{str(chunk_num)}:::::file"
+                caption = f"{file_record[0]}:::::{file_record[2]}:::::{str(chunk_num)}:::::file"
                 messages = client.get_messages("me", search=caption)
 
                 # Loop through each message
                 for message in messages:
                     # Check if message contains the chunk we need
-                    if message.message.split(":::::")[0] == file[0]:
+                    if message.message.split(":::::")[0] == file_record[0]:
                         # Download the chunk in temp directory
                         client.download_media(message, file=chunk_path)
 
@@ -128,8 +128,8 @@ class Telegram:
                             chunk = chunk_file.read()
 
                             # Append the chunk to the file
-                            with open(file_path, "ab") as file:
-                                file.write(chunk)
+                            with open(file_path, "ab") as file_writer:
+                                file_writer.write(chunk)
 
         print(colored(f"[+] Downloaded file \"{file_name}\" to \"{file_path}\".", "green"))
 

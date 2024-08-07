@@ -88,16 +88,11 @@ class Telegram:
         print(table)
 
     def download_file(self, file_query: str):
-        # Download a file
         print(colored(f'[*] Searching for "{file_query}"...', "blue"))
         file_record = self.db.find_file_by_name_or_path_or_id(file_query)
 
         if not file_record:
             print(colored(f"[-] File {file_query} not found.", "red"))
-            return
-
-        if file_record[0][-2] == "dir":
-            self.download_directory(file_query)
             return
 
         file_record = file_record[0]
@@ -107,27 +102,24 @@ class Telegram:
 
         print(colored(f"\n[+] Downloading {len(chunks)} chunk(s).", "magenta"))
 
+        # Ensure the file is created empty
+        with open(file_path, "wb") as f:
+            pass
+
         # Download each chunk
         with self.client.start() as client:
-            # Loop through each chunk
             for chunk_num, chunk_path in enumerate(chunks):
-                # Build the caption, to search for the message
-                # that contains the chunk we need.
-                caption = f"{file_record[0]}:::::{file_record[2]}:::::{str(chunk_num)}:::::file"
+                caption = f"{file_record[0]}::::::{file_record[2]}::::::{str(chunk_num)}:::::file"
                 messages = client.get_messages("me", search=caption)
 
-                # Loop through each message
                 for message in messages:
-                    # Check if message contains the chunk we need
                     if message.message.split(":::::")[0] == file_record[0]:
-                        # Download the chunk in temp directory
-                        client.download_media(message, file=chunk_path)
+                        temp_chunk_path = os.path.join("temp", f"{file_name}.part{chunk_num}")
+                        client.download_media(message, file=temp_chunk_path)
 
-                        # Read the chunk
-                        with open(chunk_path, "rb") as chunk_file:
+                        with open(temp_chunk_path, "rb") as chunk_file:
                             chunk = chunk_file.read()
 
-                            # Append the chunk to the file
                             with open(file_path, "ab") as file_writer:
                                 file_writer.write(chunk)
 
@@ -172,37 +164,26 @@ class Telegram:
             print(colored(f"[+] Removed directory {file_query}.", "green"))
 
     def upload_file(
-        self,
-        current_dir: str,
-        file_path: str,
-        file_name: str,
+            self,
+            current_dir: str,
+            file_path: str,
+            file_name: str,
     ) -> str:
         print(colored(f"[*] Uploading {file_name} to Telegram...", "magenta"))
-        # Upload file to Telegram and get the file URL
         absolute_path = os.path.abspath(os.path.join(current_dir, file_path))
 
-        # Split the file into chunks
-        chunks = split_file_into_chunks(absolute_path)
+        upload_id = uuid.uuid4().__str__().replace("-", "")
 
-        id = uuid.uuid4().__str__().replace("-", "")
+        def upload_chunk_callback(chunk_file_path):
+            caption = f"{upload_id}::::::{absolute_path}::::::file"
+            self.client.send_file("me", chunk_file_path, caption=caption)
+
+        chunks = split_file_into_chunks(absolute_path, upload_chunk_callback)
+
         print(colored(f"\n[+] Split {file_name} into {len(chunks)} chunk(s).", "cyan"))
 
-        # Upload each chunk to Telegram
-        with self.client.start() as client:
-            print()
-            progress = tqdm(total=len(chunks))
-
-            for chunk_num, chunk_path in enumerate(chunks):
-                caption = f"{id}::::::{absolute_path}::::::{str(chunk_num)}:::::file"
-                client.send_file(
-                    "me",
-                    chunk_path,
-                    caption=caption,
-                    progress_callback=lambda current, total: progress.update(1),
-                )
-
         self.db.insert(
-            id, file_name, absolute_path, os.path.getsize(absolute_path), chunks, "file"
+            upload_id, file_name, absolute_path, os.path.getsize(absolute_path), chunks, "file"
         )
 
     def upload_directory(self, current_dir: str, dir_path: str, dir_name: str):

@@ -10,7 +10,7 @@ def parse_bytes(bytes: int):
         bytes /= 1024
 
 
-def split_file_into_chunks(absolute_path: str):
+def split_file_into_chunks(absolute_path: str, upload_chunk_callback):
     # Splits the file into chunks
     # so Telegram can handle it (2GB max)
     chunks = []
@@ -31,7 +31,6 @@ def split_file_into_chunks(absolute_path: str):
                 root_dir = os.path.dirname(sys.argv[0])
                 temp_dir = os.path.join(root_dir, "temp")
 
-                # Write the chunk to a file in `temp`
                 chunk_file_path = os.path.join(
                     temp_dir,
                     f"{absolute_path}-{chunk_num}.chunk",
@@ -41,13 +40,15 @@ def split_file_into_chunks(absolute_path: str):
                 with open(chunk_file_path, "wb") as chunk_file:
                     chunk_file.write(chunk)
 
+                upload_chunk_callback(chunk_file_path)
+                os.remove(chunk_file_path)
+
                 chunks.append(chunk_file_path)
                 chunk_num += 1
 
         return chunks
 
     else:
-        # No need to split the file
         with open(absolute_path, "rb") as file:
             chunks.append(file.read())
 
